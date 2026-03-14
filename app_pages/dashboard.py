@@ -1,36 +1,43 @@
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
-from db import DOCUMENT_TYPES, STATUS_OPTIONS
+from db import get_dashboard_kpis, get_stock_by_product
 
 
 def render_dashboard_page() -> None:
     st.header("Dashboard")
-    st.write(
-        "This page will show live KPIs and filters once the query helpers are added."
-    )
 
-    metric_labels = [
-        "Total Products in Stock",
-        "Low / Out of Stock",
-        "Pending Receipts",
-        "Pending Deliveries",
-        "Scheduled Transfers",
-    ]
-    metric_columns = st.columns(len(metric_labels))
+    kpis = get_dashboard_kpis()
 
-    for column, label in zip(metric_columns, metric_labels):
-        column.metric(label, 0)
+    # ── KPI cards row 1 ───────────────────────────────────────────────────────
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Products", kpis["total_products"])
+    col2.metric("Total Units in Stock", f"{kpis['total_stock']:g}")
+    col3.metric("Low / At Reorder Level", kpis["low_stock"])
+    col4.metric("Out of Stock", kpis["out_of_stock"])
 
-    filter_left, filter_right = st.columns(2)
-    with filter_left:
-        st.selectbox("Document Type", options=("All",) + DOCUMENT_TYPES, disabled=True)
-        st.selectbox("Status", options=("All",) + STATUS_OPTIONS, disabled=True)
-    with filter_right:
-        st.text_input("Warehouse or Location", disabled=True)
-        st.text_input("Product Category", disabled=True)
+    st.divider()
 
-    st.info(
-        "Next step: replace these placeholder metrics with real SQL queries from db.py."
-    )
+    # ── KPI cards row 2 ───────────────────────────────────────────────────────
+    col5, col6, col7 = st.columns(3)
+    col5.metric("Pending Receipts", kpis["pending_receipts"])
+    col6.metric("Pending Deliveries", kpis["pending_deliveries"])
+    col7.metric("Operations Today", kpis["ops_today"])
+
+    st.divider()
+
+    # ── Stock by product bar chart ────────────────────────────────────────────
+    st.subheader("Stock by Product (Top 15)")
+
+    rows = get_stock_by_product(limit=15)
+    if not rows:
+        st.info("No stock data yet. Perform a Receipt operation to see the chart.")
+        return
+
+    chart_data = pd.DataFrame(
+        [{"Product": f"{r['sku']} — {r['product_name']}", "Units": r["total_stock"]} for r in rows]
+    ).set_index("Product")
+
+    st.bar_chart(chart_data, y="Units", use_container_width=True)

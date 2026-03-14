@@ -1071,3 +1071,82 @@ def list_ledger(
 
     with get_connection() as connection:
         return connection.execute(query, params).fetchall()
+
+
+# ── Dashboard KPIs ────────────────────────────────────────────────────────────
+
+def get_dashboard_kpis() -> dict[str, int | float]:
+    """Return a dict of summary numbers used on the Dashboard."""
+    with get_connection() as connection:
+        total_products = connection.execute(
+            "SELECT COUNT(*) AS cnt FROM products"
+        ).fetchone()["cnt"]
+
+        total_stock = connection.execute(
+            "SELECT COALESCE(SUM(quantity), 0) AS total FROM stock_balances"
+        ).fetchone()["total"]
+
+        low_stock_rows = connection.execute(
+            """
+            SELECT products.id
+            FROM products
+            LEFT JOIN stock_balances ON stock_balances.product_id = products.id
+            GROUP BY products.id, products.reorder_level
+            HAVING COALESCE(SUM(stock_balances.quantity), 0) <= products.reorder_level
+            """
+        ).fetchall()
+        low_stock = len(low_stock_rows)
+
+        out_of_stock_rows = connection.execute(
+            """
+            SELECT products.id
+            FROM products
+            LEFT JOIN stock_balances ON stock_balances.product_id = products.id
+            GROUP BY products.id
+            HAVING COALESCE(SUM(stock_balances.quantity), 0) = 0
+            """
+        ).fetchall()
+        out_of_stock_count = len(out_of_stock_rows)
+
+        pending_receipts = connection.execute(
+            "SELECT COUNT(*) AS cnt FROM stock_documents WHERE document_type = 'Receipt' AND status IN ('Draft', 'Waiting', 'Ready')"
+        ).fetchone()["cnt"]
+
+        pending_deliveries = connection.execute(
+            "SELECT COUNT(*) AS cnt FROM stock_documents WHERE document_type = 'Delivery' AND status IN ('Draft', 'Waiting', 'Ready')"
+        ).fetchone()["cnt"]
+
+        today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        ops_today = connection.execute(
+            "SELECT COUNT(*) AS cnt FROM stock_documents WHERE DATE(created_at) = ?",
+            (today,),
+        ).fetchone()["cnt"]
+
+    return {
+        "total_products": total_products,
+        "total_stock": round(float(total_stock), 2),
+        "low_stock": low_stock,
+        "out_of_stock": out_of_stock_count,
+        "pending_receipts": pending_receipts,
+        "pending_deliveries": pending_deliveries,
+        "ops_today": ops_today,
+    }
+
+
+def get_stock_by_product(limit: int = 15) -> list[sqlite3.Row]:
+    """Return total stock per product, ordered descending, for the bar chart."""
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT
+                products.name  AS product_name,
+                products.sku,
+                ROUND(COALESCE(SUM(stock_balances.quantity), 0), 2) AS total_stock
+            FROM products
+            LEFT JOIN stock_balances ON stock_balances.product_id = products.id
+            GROUP BY products.id, products.name, products.sku
+            ORDER BY total_stock DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
