@@ -15,7 +15,9 @@ This repository now contains the first project files for your hackathon Inventor
 - The SQLite database file is created automatically on first run.
 - The database schema skeleton is created automatically on startup.
 - Authentication now works (signup, login, local demo OTP reset, logout).
-- Business pages (dashboard/products/operations/history/settings) are scaffolded and ready to be connected to real CRUD queries.
+- Product create/list/search now works from the Products page.
+- Product listing shows total stock and low-stock flag using reorder level.
+- Remaining pages (dashboard/operations/history/settings) are scaffolded and ready to be connected to real CRUD queries.
 
 ## How To Run
 
@@ -35,4 +37,4 @@ streamlit run app.py
 
 ## What Comes Next
 
-The next coding step is to connect the Authentication page to the users table and then build real product create/list actions.
+The next coding step is to connect the Receipts operation to stock_documents, stock_document_lines, stock_balances, and stock_ledger.

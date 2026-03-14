@@ -78,8 +78,8 @@ def main() -> None:
 
     st.title("CoreInventory")
     st.caption(
-        "This app now includes real signup/login/reset-password behavior, while "
-        "products and operations pages are still being connected."
+        "This app now includes real signup/login/reset-password behavior and product "
+        "create/list. Inventory operations are the next step."
     )
 
     if not st.session_state.is_authenticated and st.session_state.current_page != "Authentication":

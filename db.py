@@ -374,3 +374,175 @@ def reset_password_with_otp(
         connection.commit()
 
     return True, "Password reset successful. Please log in with your new password."
+
+
+def list_categories() -> list[sqlite3.Row]:
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT id, name, description
+            FROM categories
+            ORDER BY name
+            """
+        ).fetchall()
+
+
+def list_locations() -> list[sqlite3.Row]:
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT
+                locations.id,
+                locations.name,
+                locations.code,
+                locations.warehouse_id,
+                warehouses.name AS warehouse_name,
+                warehouses.code AS warehouse_code
+            FROM locations
+            JOIN warehouses ON warehouses.id = locations.warehouse_id
+            ORDER BY warehouses.name, locations.name
+            """
+        ).fetchall()
+
+
+def create_product(
+    name: str,
+    sku: str,
+    category_id: int | None,
+    unit_of_measure: str,
+    reorder_level: float,
+    initial_stock: float,
+    initial_location_id: int | None,
+) -> tuple[bool, str]:
+    clean_name = name.strip()
+    clean_sku = sku.strip().upper()
+    clean_unit = unit_of_measure.strip()
+
+    if not clean_name:
+        return False, "Product name is required."
+    if not clean_sku:
+        return False, "SKU / Code is required."
+    if not clean_unit:
+        return False, "Unit of measure is required."
+    if reorder_level < 0:
+        return False, "Reorder level cannot be negative."
+    if initial_stock < 0:
+        return False, "Initial stock cannot be negative."
+
+    normalized_category_id = category_id if category_id else None
+
+    with get_connection() as connection:
+        selected_location: sqlite3.Row | None = None
+
+        if initial_stock > 0:
+            if initial_location_id is None:
+                return False, "Select an initial stock location when initial stock is greater than 0."
+
+            selected_location = connection.execute(
+                """
+                SELECT id, warehouse_id
+                FROM locations
+                WHERE id = ?
+                """,
+                (initial_location_id,),
+            ).fetchone()
+            if selected_location is None:
+                return False, "Please select a valid initial stock location."
+
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO products (name, sku, category_id, unit_of_measure, reorder_level)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    clean_name,
+                    clean_sku,
+                    normalized_category_id,
+                    clean_unit,
+                    float(reorder_level),
+                ),
+            )
+
+            if initial_stock > 0 and selected_location is not None:
+                connection.execute(
+                    """
+                    INSERT INTO stock_balances (
+                        product_id,
+                        warehouse_id,
+                        location_id,
+                        quantity,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (product_id, warehouse_id, location_id)
+                    DO UPDATE SET
+                        quantity = stock_balances.quantity + excluded.quantity,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        cursor.lastrowid,
+                        selected_location["warehouse_id"],
+                        selected_location["id"],
+                        float(initial_stock),
+                    ),
+                )
+
+            connection.commit()
+        except sqlite3.IntegrityError as error:
+            if "products.sku" in str(error).lower():
+                return False, "This SKU already exists. Please use a unique SKU."
+            return False, "Could not save product. Please try again."
+
+    return True, "Product saved successfully."
+
+
+def list_products(
+    *,
+    search_query: str = "",
+    category_id: int | None = None,
+) -> list[sqlite3.Row]:
+    filters: list[str] = []
+    params: list[object] = []
+
+    cleaned_search = search_query.strip().lower()
+    if cleaned_search:
+        filters.append("(LOWER(products.sku) LIKE ? OR LOWER(products.name) LIKE ?)")
+        like_pattern = f"%{cleaned_search}%"
+        params.extend([like_pattern, like_pattern])
+
+    if category_id is not None:
+        filters.append("products.category_id = ?")
+        params.append(category_id)
+
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+    query = f"""
+        SELECT
+            products.id,
+            products.name,
+            products.sku,
+            COALESCE(categories.name, 'Uncategorized') AS category,
+            products.unit_of_measure AS unit,
+            products.reorder_level,
+            ROUND(COALESCE(SUM(stock_balances.quantity), 0), 2) AS total_stock,
+            CASE
+                WHEN COALESCE(SUM(stock_balances.quantity), 0) <= products.reorder_level THEN 'Yes'
+                ELSE 'No'
+            END AS low_stock
+        FROM products
+        LEFT JOIN categories ON categories.id = products.category_id
+        LEFT JOIN stock_balances ON stock_balances.product_id = products.id
+        {where_clause}
+        GROUP BY
+            products.id,
+            products.name,
+            products.sku,
+            categories.name,
+            products.unit_of_measure,
+            products.reorder_level
+        ORDER BY products.id DESC
+    """
+
+    with get_connection() as connection:
+        return connection.execute(query, params).fetchall()
