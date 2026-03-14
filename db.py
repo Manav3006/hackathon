@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -9,6 +13,9 @@ DATABASE_PATH = Path(__file__).with_name("inventory.db")
 ROLE_OPTIONS = ("Inventory Manager", "Warehouse Staff")
 STATUS_OPTIONS = ("Draft", "Waiting", "Ready", "Done", "Canceled")
 DOCUMENT_TYPES = ("Receipt", "Delivery", "Internal Transfer", "Adjustment")
+PASSWORD_MIN_LENGTH = 6
+OTP_VALIDITY_MINUTES = 10
+PBKDF2_ITERATIONS = 120_000
 
 SCHEMA_STATEMENTS = (
     """
@@ -201,3 +208,169 @@ def seed_reference_data(connection: sqlite3.Connection) -> None:
         """,
         DEMO_LOCATIONS,
     )
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PBKDF2_ITERATIONS,
+    )
+    return f"{salt.hex()}${password_hash.hex()}"
+
+
+def verify_password(password: str, stored_password_hash: str) -> bool:
+    try:
+        salt_hex, hash_hex = stored_password_hash.split("$", maxsplit=1)
+    except ValueError:
+        return False
+
+    salt = bytes.fromhex(salt_hex)
+    expected_hash = bytes.fromhex(hash_hex)
+    candidate_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PBKDF2_ITERATIONS,
+    )
+    return hmac.compare_digest(expected_hash, candidate_hash)
+
+
+def get_user_by_email(email: str) -> sqlite3.Row | None:
+    normalized_email = _normalize_email(email)
+
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT id, full_name, email, password_hash, role, created_at
+            FROM users
+            WHERE email = ?
+            """,
+            (normalized_email,),
+        ).fetchone()
+
+
+def create_user(full_name: str, email: str, password: str, role: str) -> tuple[bool, str]:
+    clean_name = full_name.strip()
+    normalized_email = _normalize_email(email)
+
+    if not clean_name:
+        return False, "Full name is required."
+    if "@" not in normalized_email:
+        return False, "Please enter a valid email address."
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return False, f"Password must be at least {PASSWORD_MIN_LENGTH} characters long."
+    if role not in ROLE_OPTIONS:
+        return False, "Please select a valid role."
+
+    password_hash = hash_password(password)
+
+    try:
+        with get_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO users (full_name, email, password_hash, role)
+                VALUES (?, ?, ?, ?)
+                """,
+                (clean_name, normalized_email, password_hash, role),
+            )
+            connection.commit()
+    except sqlite3.IntegrityError:
+        return False, "An account with this email already exists."
+
+    return True, "Account created. You can now log in."
+
+
+def authenticate_user(email: str, password: str) -> sqlite3.Row | None:
+    user = get_user_by_email(email)
+    if user is None:
+        return None
+
+    if not verify_password(password, user["password_hash"]):
+        return None
+
+    return user
+
+
+def generate_password_reset_otp(
+    email: str,
+    *,
+    valid_minutes: int = OTP_VALIDITY_MINUTES,
+) -> tuple[bool, str]:
+    user = get_user_by_email(email)
+    if user is None:
+        return False, "No account found with this email."
+
+    otp_code = f"{secrets.randbelow(1_000_000):06d}"
+    expires_at = (_utc_now() + timedelta(minutes=valid_minutes)).isoformat()
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO password_reset_otps (user_id, otp_code, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (user["id"], otp_code, expires_at),
+        )
+        connection.commit()
+
+    # Demo mode: OTP is returned so the UI can display it without SMS/email integration.
+    return True, otp_code
+
+
+def reset_password_with_otp(
+    email: str,
+    otp_code: str,
+    new_password: str,
+) -> tuple[bool, str]:
+    if len(new_password) < PASSWORD_MIN_LENGTH:
+        return False, f"New password must be at least {PASSWORD_MIN_LENGTH} characters long."
+
+    user = get_user_by_email(email)
+    if user is None:
+        return False, "No account found with this email."
+
+    with get_connection() as connection:
+        otp_row = connection.execute(
+            """
+            SELECT id, expires_at
+            FROM password_reset_otps
+            WHERE user_id = ?
+              AND otp_code = ?
+              AND used_at IS NULL
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user["id"], otp_code.strip()),
+        ).fetchone()
+
+        if otp_row is None:
+            return False, "Invalid OTP. Please check the code and try again."
+
+        expires_at = datetime.fromisoformat(otp_row["expires_at"])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < _utc_now():
+            return False, "This OTP has expired. Please request a new one."
+
+        connection.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (hash_password(new_password), user["id"]),
+        )
+        connection.execute(
+            "UPDATE password_reset_otps SET used_at = ? WHERE id = ?",
+            (_utc_now().isoformat(), otp_row["id"]),
+        )
+        connection.commit()
+
+    return True, "Password reset successful. Please log in with your new password."

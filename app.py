@@ -25,9 +25,11 @@ PAGE_RENDERERS = {
 
 def initialize_session_state() -> None:
     default_state = {
-        "current_page": "Dashboard",
+        "current_page": "Authentication",
         "is_authenticated": False,
         "current_user": None,
+        "current_user_id": None,
+        "current_user_email": None,
         "current_role": "Inventory Manager",
     }
 
@@ -36,12 +38,19 @@ def initialize_session_state() -> None:
 
 
 def render_sidebar() -> None:
-    page_names = list(PAGE_RENDERERS.keys())
+    if st.session_state.is_authenticated:
+        page_names = [name for name in PAGE_RENDERERS if name != "Authentication"]
+    else:
+        page_names = ["Authentication"]
+
+    if st.session_state.current_page not in page_names:
+        st.session_state.current_page = page_names[0]
+
     current_page = st.session_state.current_page
-    current_index = page_names.index(current_page) if current_page in page_names else 0
+    current_index = page_names.index(current_page)
 
     st.sidebar.title("CoreInventory")
-    st.sidebar.caption("Phase 1 starter shell")
+    st.sidebar.caption("Phase 1: auth + schema foundation")
     st.session_state.current_page = st.sidebar.radio(
         "Navigation",
         options=page_names,
@@ -53,11 +62,12 @@ def render_sidebar() -> None:
     st.sidebar.write(
         f"Authenticated: {'Yes' if st.session_state.is_authenticated else 'No'}"
     )
-    st.sidebar.write(f"Role: {st.session_state.current_role}")
-    st.sidebar.info(
-        "This build only sets up the project structure and database schema. "
-        "Real authentication and CRUD actions come next."
-    )
+    if st.session_state.is_authenticated:
+        st.sidebar.write(f"User: {st.session_state.current_user}")
+        st.sidebar.write(f"Role: {st.session_state.current_role}")
+        st.sidebar.success("You are signed in. Business pages are unlocked.")
+    else:
+        st.sidebar.info("Please log in from the Authentication page to access business pages.")
 
 
 def main() -> None:
@@ -68,9 +78,13 @@ def main() -> None:
 
     st.title("CoreInventory")
     st.caption(
-        "This starter app creates the SQLite schema on startup and gives each future "
-        "feature a clear file to live in."
+        "This app now includes real signup/login/reset-password behavior, while "
+        "products and operations pages are still being connected."
     )
+
+    if not st.session_state.is_authenticated and st.session_state.current_page != "Authentication":
+        st.session_state.current_page = "Authentication"
+        st.warning("Please log in first to continue.")
 
     PAGE_RENDERERS[st.session_state.current_page]()
 

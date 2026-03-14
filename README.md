@@ -14,7 +14,8 @@ This repository now contains the first project files for your hackathon Inventor
 - The app starts with Streamlit.
 - The SQLite database file is created automatically on first run.
 - The database schema skeleton is created automatically on startup.
-- The UI pages exist as placeholders so each feature has a clear file.
+- Authentication now works (signup, login, local demo OTP reset, logout).
+- Business pages (dashboard/products/operations/history/settings) are scaffolded and ready to be connected to real CRUD queries.
 
 ## How To Run
 
