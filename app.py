@@ -38,7 +38,8 @@ def initialize_session_state() -> None:
 def render_sidebar() -> None:
     page_names = list(PAGE_RENDERERS.keys())
     current_page = st.session_state.current_page
-    current_index = page_names.index(current_page) if current_page in page_names else 0
+    current_index = page_names.index(
+        current_page) if current_page in page_names else 0
 
     st.sidebar.title("CoreInventory")
     st.sidebar.caption("Phase 1 starter shell")
@@ -64,14 +65,21 @@ def main() -> None:
     st.set_page_config(page_title="CoreInventory", layout="wide")
     init_db()
     initialize_session_state()
+
+    # Always show Authentication page first if not authenticated
+    if not st.session_state.get("is_authenticated", False):
+        st.session_state.current_page = "Authentication"
+        render_sidebar()
+        st.title("CoreInventory")
+        PAGE_RENDERERS["Authentication"]()
+        return
+
+    # After login, default to Dashboard if just authenticated
+    if st.session_state.current_page == "Authentication":
+        st.session_state.current_page = "Dashboard"
+
     render_sidebar()
-
     st.title("CoreInventory")
-    st.caption(
-        "This starter app creates the SQLite schema on startup and gives each future "
-        "feature a clear file to live in."
-    )
-
     PAGE_RENDERERS[st.session_state.current_page]()
 
 

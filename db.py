@@ -201,3 +201,78 @@ def seed_reference_data(connection: sqlite3.Connection) -> None:
         """,
         DEMO_LOCATIONS,
     )
+
+
+def get_user_by_email(email: str) -> dict | None:
+    with get_connection() as connection:
+        row = connection.execute(
+            "SELECT * FROM users WHERE email = ?",
+            (email,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def check_user_credentials(email: str, password: str) -> dict | None:
+    user = get_user_by_email(email)
+    if user and user["password_hash"] == password:
+        return user
+    return None
+
+
+def email_exists(email: str) -> bool:
+    with get_connection() as connection:
+        row = connection.execute(
+            "SELECT 1 FROM users WHERE email = ?",
+            (email,)
+        ).fetchone()
+        return row is not None
+
+
+def create_user(full_name: str, email: str, password: str, role: str) -> bool:
+    if email_exists(email):
+        return False
+    with get_connection() as connection:
+        connection.execute(
+            "INSERT INTO users (full_name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+            (full_name, email, password, role),
+        )
+        connection.commit()
+    return True
+
+
+def create_password_reset_otp(email: str, otp_code: str, expires_at: str) -> bool:
+    user = get_user_by_email(email)
+    if not user:
+        return False
+    with get_connection() as connection:
+        connection.execute(
+            "INSERT INTO password_reset_otps (user_id, otp_code, expires_at) VALUES (?, ?, ?)",
+            (user["id"], otp_code, expires_at),
+        )
+        connection.commit()
+    return True
+
+
+def validate_password_reset_otp(email: str, otp_code: str) -> bool:
+    user = get_user_by_email(email)
+    if not user:
+        return False
+    with get_connection() as connection:
+        row = connection.execute(
+            "SELECT * FROM password_reset_otps WHERE user_id = ? AND otp_code = ? AND used_at IS NULL AND expires_at > datetime('now')",
+            (user["id"], otp_code),
+        ).fetchone()
+        return row is not None
+
+
+def update_user_password(email: str, new_password: str) -> bool:
+    user = get_user_by_email(email)
+    if not user:
+        return False
+    with get_connection() as connection:
+        connection.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (new_password, user["id"]),
+        )
+        connection.commit()
+    return True
