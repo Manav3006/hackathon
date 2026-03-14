@@ -1,6 +1,6 @@
-# CoreInventory Starter
+# CoreInventory 
 
-This repository now contains the first project files for your hackathon Inventory Management System.
+This repository contains the first project files for Inventory Management System.
 
 ## Current Structure
 
