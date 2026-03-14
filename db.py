@@ -376,6 +376,69 @@ def reset_password_with_otp(
     return True, "Password reset successful. Please log in with your new password."
 
 
+def list_warehouses() -> list[sqlite3.Row]:
+    with get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT id, name, code, address
+            FROM warehouses
+            ORDER BY name
+            """
+        ).fetchall()
+
+
+def create_warehouse(name: str, code: str, address: str) -> tuple[bool, str]:
+    name = name.strip()
+    code = code.strip().upper()
+    address = address.strip()
+
+    if not name:
+        return False, "Warehouse name is required."
+    if not code:
+        return False, "Warehouse code is required."
+
+    try:
+        with get_connection() as connection:
+            connection.execute(
+                "INSERT INTO warehouses (name, code, address) VALUES (?, ?, ?)",
+                (name, code, address),
+            )
+            connection.commit()
+    except sqlite3.IntegrityError as error:
+        lowered = str(error).lower()
+        if "warehouses.name" in lowered or "unique" in lowered and "name" in lowered:
+            return False, "A warehouse with that name already exists."
+        if "warehouses.code" in lowered or "unique" in lowered and "code" in lowered:
+            return False, "A warehouse with that code already exists."
+        return False, "Could not save warehouse. Please try again."
+
+    return True, f"Warehouse '{name}' created successfully."
+
+
+def create_location(name: str, code: str, warehouse_id: int) -> tuple[bool, str]:
+    name = name.strip()
+    code = code.strip().upper()
+
+    if not name:
+        return False, "Location name is required."
+    if not code:
+        return False, "Location code is required."
+    if not warehouse_id:
+        return False, "Please select a warehouse."
+
+    try:
+        with get_connection() as connection:
+            connection.execute(
+                "INSERT INTO locations (name, code, warehouse_id) VALUES (?, ?, ?)",
+                (name, code, warehouse_id),
+            )
+            connection.commit()
+    except sqlite3.IntegrityError:
+        return False, "A location with that code already exists in this warehouse."
+
+    return True, f"Location '{name}' ({code}) created successfully."
+
+
 def list_categories() -> list[sqlite3.Row]:
     with get_connection() as connection:
         return connection.execute(
