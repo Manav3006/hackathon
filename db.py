@@ -13,6 +13,7 @@ DATABASE_PATH = Path(__file__).with_name("inventory.db")
 ROLE_OPTIONS = ("Inventory Manager", "Warehouse Staff")
 STATUS_OPTIONS = ("Draft", "Waiting", "Ready", "Done", "Canceled")
 DOCUMENT_TYPES = ("Receipt", "Delivery", "Internal Transfer", "Adjustment")
+UNIT_OF_MEASURE_OPTIONS = ("litres", "kgs", "count")
 PASSWORD_MIN_LENGTH = 6
 OTP_VALIDITY_MINUTES = 10
 PBKDF2_ITERATIONS = 120_000
@@ -479,7 +480,7 @@ def create_product(
 ) -> tuple[bool, str]:
     clean_name = name.strip()
     clean_sku = sku.strip().upper()
-    clean_unit = unit_of_measure.strip()
+    clean_unit = unit_of_measure.strip().lower()
 
     if not clean_name:
         return False, "Product name is required."
@@ -487,6 +488,8 @@ def create_product(
         return False, "SKU / Code is required."
     if not clean_unit:
         return False, "Unit of measure is required."
+    if clean_unit not in UNIT_OF_MEASURE_OPTIONS:
+        return False, "Unit must be one of: litres, kgs, count."
     if reorder_level < 0:
         return False, "Reorder level cannot be negative."
     if initial_stock < 0:
@@ -560,6 +563,71 @@ def create_product(
     return True, "Product saved successfully."
 
 
+def update_product(
+    *,
+    product_id: int,
+    name: str,
+    sku: str,
+    category_id: int | None,
+    unit_of_measure: str,
+    reorder_level: float,
+) -> tuple[bool, str]:
+    clean_name = name.strip()
+    clean_sku = sku.strip().upper()
+    clean_unit = unit_of_measure.strip().lower()
+
+    if product_id <= 0:
+        return False, "Please select a valid product."
+    if not clean_name:
+        return False, "Product name is required."
+    if not clean_sku:
+        return False, "SKU / Code is required."
+    if clean_unit not in UNIT_OF_MEASURE_OPTIONS:
+        return False, "Unit must be one of: litres, kgs, count."
+    if reorder_level < 0:
+        return False, "Reorder level cannot be negative."
+
+    normalized_category_id = category_id if category_id else None
+
+    try:
+        with get_connection() as connection:
+            exists = connection.execute(
+                "SELECT id FROM products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            if exists is None:
+                return False, "Selected product no longer exists."
+
+            connection.execute(
+                """
+                UPDATE products
+                SET
+                    name = ?,
+                    sku = ?,
+                    category_id = ?,
+                    unit_of_measure = ?,
+                    reorder_level = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    clean_name,
+                    clean_sku,
+                    normalized_category_id,
+                    clean_unit,
+                    float(reorder_level),
+                    product_id,
+                ),
+            )
+            connection.commit()
+    except sqlite3.IntegrityError as error:
+        if "products.sku" in str(error).lower():
+            return False, "This SKU already exists. Please use a unique SKU."
+        return False, "Could not update product. Please try again."
+
+    return True, "Product updated successfully."
+
+
 def list_products(
     *,
     search_query: str = "",
@@ -570,7 +638,8 @@ def list_products(
 
     cleaned_search = search_query.strip().lower()
     if cleaned_search:
-        filters.append("(LOWER(products.sku) LIKE ? OR LOWER(products.name) LIKE ?)")
+        filters.append(
+            "(LOWER(products.sku) LIKE ? OR LOWER(products.name) LIKE ?)")
         like_pattern = f"%{cleaned_search}%"
         params.extend([like_pattern, like_pattern])
 
@@ -628,20 +697,32 @@ def _generate_reference(prefix: str) -> str:
     return f"{prefix}-{date_part}-{sequence:04d}"
 
 
+def _get_current_stock_in_connection(
+    connection: sqlite3.Connection,
+    product_id: int,
+    location_id: int,
+) -> float:
+    row = connection.execute(
+        "SELECT quantity FROM stock_balances WHERE product_id = ? AND location_id = ?",
+        (product_id, location_id),
+    ).fetchone()
+    return float(row["quantity"]) if row else 0.0
+
+
 def get_current_stock(product_id: int, location_id: int) -> float:
     """Return the current quantity for a product at a specific location."""
     with get_connection() as connection:
-        row = connection.execute(
-            "SELECT quantity FROM stock_balances WHERE product_id = ? AND location_id = ?",
-            (product_id, location_id),
-        ).fetchone()
-    return float(row["quantity"]) if row else 0.0
+        return _get_current_stock_in_connection(connection, product_id, location_id)
 
 
 def get_product_by_id(product_id: int) -> sqlite3.Row | None:
     with get_connection() as connection:
         return connection.execute(
-            "SELECT id, name, sku, unit_of_measure, reorder_level FROM products WHERE id = ?",
+            """
+            SELECT id, name, sku, category_id, unit_of_measure, reorder_level
+            FROM products
+            WHERE id = ?
+            """,
             (product_id,),
         ).fetchone()
 
@@ -697,16 +778,22 @@ def post_receipt(
             # 3) Update stock balance
             connection.execute(
                 """
-                INSERT INTO stock_balances (product_id, location_id, quantity)
-                VALUES (?, ?, ?)
-                ON CONFLICT (product_id, location_id) DO UPDATE
-                    SET quantity = quantity + excluded.quantity
+                INSERT INTO stock_balances (product_id, warehouse_id, location_id, quantity, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (product_id, warehouse_id, location_id) DO UPDATE
+                    SET
+                        quantity = stock_balances.quantity + excluded.quantity,
+                        updated_at = CURRENT_TIMESTAMP
                 """,
-                (product_id, destination_location_id, quantity),
+                (product_id, warehouse_id, destination_location_id, quantity),
             )
 
             # 4) Ledger entry
-            balance_after = get_current_stock(product_id, destination_location_id)
+            balance_after = _get_current_stock_in_connection(
+                connection,
+                product_id,
+                destination_location_id,
+            )
             connection.execute(
                 """
                 INSERT INTO stock_ledger
@@ -740,12 +827,6 @@ def post_delivery(
     if quantity <= 0:
         return False, "Quantity must be greater than zero."
 
-    current = get_current_stock(product_id, source_location_id)
-    if current < quantity:
-        return False, (
-            f"Not enough stock. Available: {current:g}, requested: {quantity:g}."
-        )
-
     reference = _generate_reference("DEL")
     now = datetime.now(tz=timezone.utc).isoformat()
 
@@ -758,6 +839,13 @@ def post_delivery(
             if not location_row:
                 return False, "Selected location not found."
             warehouse_id = location_row["warehouse_id"]
+
+            current = _get_current_stock_in_connection(
+                connection, product_id, source_location_id)
+            if current < quantity:
+                return False, (
+                    f"Not enough stock. Available: {current:g}, requested: {quantity:g}."
+                )
 
             cur = connection.execute(
                 """
@@ -782,10 +870,10 @@ def post_delivery(
             connection.execute(
                 """
                 UPDATE stock_balances
-                SET quantity = quantity - ?
-                WHERE product_id = ? AND location_id = ?
+                SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+                WHERE product_id = ? AND warehouse_id = ? AND location_id = ?
                 """,
-                (quantity, product_id, source_location_id),
+                (quantity, product_id, warehouse_id, source_location_id),
             )
 
             balance_after = current - quantity
@@ -824,12 +912,6 @@ def post_transfer(
     if source_location_id == destination_location_id:
         return False, "Source and destination locations must be different."
 
-    current = get_current_stock(product_id, source_location_id)
-    if current < quantity:
-        return False, (
-            f"Not enough stock at source. Available: {current:g}, requested: {quantity:g}."
-        )
-
     reference = _generate_reference("TRF")
     now = datetime.now(tz=timezone.utc).isoformat()
 
@@ -845,6 +927,13 @@ def post_transfer(
             ).fetchone()
             if not src_row or not dst_row:
                 return False, "One or both locations not found."
+
+            current = _get_current_stock_in_connection(
+                connection, product_id, source_location_id)
+            if current < quantity:
+                return False, (
+                    f"Not enough stock at source. Available: {current:g}, requested: {quantity:g}."
+                )
 
             cur = connection.execute(
                 """
@@ -870,23 +959,35 @@ def post_transfer(
 
             # Debit source
             connection.execute(
-                "UPDATE stock_balances SET quantity = quantity - ? WHERE product_id = ? AND location_id = ?",
-                (quantity, product_id, source_location_id),
+                """
+                UPDATE stock_balances
+                SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
+                WHERE product_id = ? AND warehouse_id = ? AND location_id = ?
+                """,
+                (quantity, product_id,
+                 src_row["warehouse_id"], source_location_id),
             )
 
             # Credit destination
             connection.execute(
                 """
-                INSERT INTO stock_balances (product_id, location_id, quantity)
-                VALUES (?, ?, ?)
-                ON CONFLICT (product_id, location_id) DO UPDATE
-                    SET quantity = quantity + excluded.quantity
+                INSERT INTO stock_balances (product_id, warehouse_id, location_id, quantity, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (product_id, warehouse_id, location_id) DO UPDATE
+                    SET
+                        quantity = stock_balances.quantity + excluded.quantity,
+                        updated_at = CURRENT_TIMESTAMP
                 """,
-                (product_id, destination_location_id, quantity),
+                (product_id, dst_row["warehouse_id"],
+                 destination_location_id, quantity),
             )
 
             src_balance = current - quantity
-            dst_balance = get_current_stock(product_id, destination_location_id)
+            dst_balance = _get_current_stock_in_connection(
+                connection,
+                product_id,
+                destination_location_id,
+            )
 
             # Two ledger entries — one debit, one credit
             connection.execute(
@@ -936,12 +1037,6 @@ def post_adjustment(
     if not reason.strip():
         return False, "A reason is required for adjustments."
 
-    current = get_current_stock(product_id, location_id)
-    delta = counted_quantity - current
-
-    if delta == 0:
-        return False, "Counted quantity matches current stock — no adjustment needed."
-
     reference = _generate_reference("ADJ")
     now = datetime.now(tz=timezone.utc).isoformat()
 
@@ -954,6 +1049,13 @@ def post_adjustment(
             if not loc_row:
                 return False, "Selected location not found."
             warehouse_id = loc_row["warehouse_id"]
+
+            current = _get_current_stock_in_connection(
+                connection, product_id, location_id)
+            delta = counted_quantity - current
+
+            if delta == 0:
+                return False, "Counted quantity matches current stock - no adjustment needed."
 
             cur = connection.execute(
                 """
@@ -974,19 +1076,22 @@ def post_adjustment(
                     (document_id, product_id, quantity, counted_quantity, line_note)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (document_id, product_id, abs(delta), counted_quantity, reason.strip()),
+                (document_id, product_id, abs(delta),
+                 counted_quantity, reason.strip()),
             )
             line_id = cur2.lastrowid
 
             # Upsert balance to the counted quantity
             connection.execute(
                 """
-                INSERT INTO stock_balances (product_id, location_id, quantity)
-                VALUES (?, ?, ?)
-                ON CONFLICT (product_id, location_id) DO UPDATE
-                    SET quantity = excluded.quantity
+                INSERT INTO stock_balances (product_id, warehouse_id, location_id, quantity, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (product_id, warehouse_id, location_id) DO UPDATE
+                    SET
+                        quantity = excluded.quantity,
+                        updated_at = CURRENT_TIMESTAMP
                 """,
-                (product_id, location_id, counted_quantity),
+                (product_id, warehouse_id, location_id, counted_quantity),
             )
 
             connection.execute(

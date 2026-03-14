@@ -14,7 +14,7 @@ def render_dashboard_page() -> None:
     # ── KPI cards row 1 ───────────────────────────────────────────────────────
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Products", kpis["total_products"])
-    col2.metric("Total Units in Stock", f"{kpis['total_stock']:g}")
+    col2.metric("Total Stock", f"{kpis['total_stock']:g}")
     col3.metric("Low / At Reorder Level", kpis["low_stock"])
     col4.metric("Out of Stock", kpis["out_of_stock"])
 
@@ -29,7 +29,7 @@ def render_dashboard_page() -> None:
     st.divider()
 
     # ── Stock by product bar chart ────────────────────────────────────────────
-    st.subheader("Stock by Product (Top 15)")
+    st.subheader("Top Products by Stock")
 
     rows = get_stock_by_product(limit=15)
     if not rows:
@@ -37,7 +37,8 @@ def render_dashboard_page() -> None:
         return
 
     chart_data = pd.DataFrame(
-        [{"Product": f"{r['sku']} — {r['product_name']}", "Units": r["total_stock"]} for r in rows]
+        [{"Product": f"{r['sku']} — {r['product_name']}",
+            "Units": r["total_stock"]} for r in rows]
     ).set_index("Product")
 
     st.bar_chart(chart_data, y="Units", use_container_width=True)

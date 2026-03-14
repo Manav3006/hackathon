@@ -14,7 +14,6 @@ from db import (
 
 def render_operations_page() -> None:
     st.header("Operations")
-    st.write("Use the tabs below to receive stock, deliver to customers, transfer between locations, or adjust counts.")
 
     receipt_tab, delivery_tab, transfer_tab, adjustment_tab = st.tabs(
         ["Receipts", "Deliveries", "Internal Transfers", "Adjustments"]
@@ -51,7 +50,6 @@ def _location_options() -> dict[str, int]:
 
 def _render_receipt_form() -> None:
     st.subheader("Receive Stock")
-    st.caption("Records incoming goods and increases stock at the chosen location.")
 
     products = _product_options()
     locations = _location_options()
@@ -64,10 +62,14 @@ def _render_receipt_form() -> None:
         return
 
     with st.form("receipt_form", clear_on_submit=True):
-        selected_product = st.selectbox("Product *", options=list(products.keys()))
-        selected_location = st.selectbox("Destination Location *", options=list(locations.keys()))
-        quantity = st.number_input("Quantity Received *", min_value=0.01, step=1.0, format="%.2f")
-        supplier = st.text_input("Supplier / Partner Name", placeholder="Optional")
+        selected_product = st.selectbox(
+            "Product *", options=list(products.keys()))
+        selected_location = st.selectbox(
+            "Destination Location *", options=list(locations.keys()))
+        quantity = st.number_input(
+            "Quantity Received *", min_value=0.01, step=1.0, format="%.2f")
+        supplier = st.text_input(
+            "Supplier / Partner Name", placeholder="Optional")
         notes = st.text_area("Notes", placeholder="Optional")
         submitted = st.form_submit_button("Validate Receipt")
 
@@ -78,7 +80,7 @@ def _render_receipt_form() -> None:
             quantity=quantity,
             partner_name=supplier,
             notes=notes,
-            created_by_user_id=st.session_state.get("current_user_id", 0),
+            created_by_user_id=st.session_state.get("current_user_id"),
         )
         if ok:
             st.success(message)
@@ -90,7 +92,6 @@ def _render_receipt_form() -> None:
 
 def _render_delivery_form() -> None:
     st.subheader("Deliver Stock")
-    st.caption("Records outgoing goods and decreases stock at the chosen location.")
 
     products = _product_options()
     locations = _location_options()
@@ -103,10 +104,14 @@ def _render_delivery_form() -> None:
         return
 
     with st.form("delivery_form", clear_on_submit=True):
-        selected_product = st.selectbox("Product *", options=list(products.keys()))
-        selected_location = st.selectbox("Source Location *", options=list(locations.keys()))
-        quantity = st.number_input("Quantity to Deliver *", min_value=0.01, step=1.0, format="%.2f")
-        customer = st.text_input("Customer / Partner Name", placeholder="Optional")
+        selected_product = st.selectbox(
+            "Product *", options=list(products.keys()))
+        selected_location = st.selectbox(
+            "Source Location *", options=list(locations.keys()))
+        quantity = st.number_input(
+            "Quantity to Deliver *", min_value=0.01, step=1.0, format="%.2f")
+        customer = st.text_input(
+            "Customer / Partner Name", placeholder="Optional")
         notes = st.text_area("Notes", placeholder="Optional")
         submitted = st.form_submit_button("Validate Delivery")
 
@@ -117,7 +122,7 @@ def _render_delivery_form() -> None:
             quantity=quantity,
             partner_name=customer,
             notes=notes,
-            created_by_user_id=st.session_state.get("current_user_id", 0),
+            created_by_user_id=st.session_state.get("current_user_id"),
         )
         if ok:
             st.success(message)
@@ -129,7 +134,6 @@ def _render_delivery_form() -> None:
 
 def _render_transfer_form() -> None:
     st.subheader("Internal Transfer")
-    st.caption("Moves stock from one location to another. Total stock stays the same.")
 
     products = _product_options()
     locations = _location_options()
@@ -139,14 +143,19 @@ def _render_transfer_form() -> None:
         st.warning("No products found. Add products on the Products page first.")
         return
     if len(location_keys) < 2:
-        st.warning("At least two locations are needed to perform a transfer. Add more locations in Settings.")
+        st.warning(
+            "At least two locations are needed to perform a transfer. Add more locations in Settings.")
         return
 
     with st.form("transfer_form", clear_on_submit=True):
-        selected_product = st.selectbox("Product *", options=list(products.keys()))
-        source_location = st.selectbox("Source Location *", options=location_keys)
-        destination_location = st.selectbox("Destination Location *", options=location_keys, index=1)
-        quantity = st.number_input("Quantity to Transfer *", min_value=0.01, step=1.0, format="%.2f")
+        selected_product = st.selectbox(
+            "Product *", options=list(products.keys()))
+        source_location = st.selectbox(
+            "Source Location *", options=location_keys)
+        destination_location = st.selectbox(
+            "Destination Location *", options=location_keys, index=1)
+        quantity = st.number_input(
+            "Quantity to Transfer *", min_value=0.01, step=1.0, format="%.2f")
         notes = st.text_area("Notes", placeholder="Optional")
         submitted = st.form_submit_button("Validate Transfer")
 
@@ -157,7 +166,7 @@ def _render_transfer_form() -> None:
             destination_location_id=locations[destination_location],
             quantity=quantity,
             notes=notes,
-            created_by_user_id=st.session_state.get("current_user_id", 0),
+            created_by_user_id=st.session_state.get("current_user_id"),
         )
         if ok:
             st.success(message)
@@ -169,7 +178,6 @@ def _render_transfer_form() -> None:
 
 def _render_adjustment_form() -> None:
     st.subheader("Stock Adjustment")
-    st.caption("Correct inventory after a physical count. Enter the actual counted quantity.")
 
     products = _product_options()
     locations = _location_options()
@@ -182,10 +190,14 @@ def _render_adjustment_form() -> None:
         return
 
     with st.form("adjustment_form", clear_on_submit=True):
-        selected_product = st.selectbox("Product *", options=list(products.keys()))
-        selected_location = st.selectbox("Location *", options=list(locations.keys()))
-        counted_qty = st.number_input("Counted Quantity *", min_value=0.0, step=1.0, format="%.2f")
-        reason = st.text_area("Reason *", placeholder="e.g. Physical count correction")
+        selected_product = st.selectbox(
+            "Product *", options=list(products.keys()))
+        selected_location = st.selectbox(
+            "Location *", options=list(locations.keys()))
+        counted_qty = st.number_input(
+            "Counted Quantity *", min_value=0.0, step=1.0, format="%.2f")
+        reason = st.text_area(
+            "Reason *", placeholder="e.g. Physical count correction")
         submitted = st.form_submit_button("Apply Adjustment")
 
     if submitted:
@@ -194,7 +206,7 @@ def _render_adjustment_form() -> None:
             location_id=locations[selected_location],
             counted_quantity=counted_qty,
             reason=reason,
-            created_by_user_id=st.session_state.get("current_user_id", 0),
+            created_by_user_id=st.session_state.get("current_user_id"),
         )
         if ok:
             st.success(message)

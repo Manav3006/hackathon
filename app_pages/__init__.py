@@ -1,1 +1,1 @@
-"""Streamlit page modules for the CoreInventory starter app."""
+"""Streamlit page modules for the StockFlow app."""

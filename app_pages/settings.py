@@ -7,7 +7,6 @@ from db import create_location, create_warehouse, list_locations, list_warehouse
 
 def render_settings_page() -> None:
     st.header("Settings")
-    st.write("Manage the warehouses and storage locations used across your inventory.")
 
     warehouse_column, location_column = st.columns(2)
 
@@ -15,9 +14,12 @@ def render_settings_page() -> None:
     with warehouse_column:
         st.subheader("Add Warehouse")
         with st.form("warehouse_form", clear_on_submit=True):
-            wh_name = st.text_input("Warehouse Name *", placeholder="e.g. Main Warehouse")
-            wh_code = st.text_input("Warehouse Code *", placeholder="e.g. WH-MAIN")
-            wh_address = st.text_area("Address", placeholder="Optional street address")
+            wh_name = st.text_input(
+                "Warehouse Name *", placeholder="e.g. Main Warehouse")
+            wh_code = st.text_input(
+                "Warehouse Code *", placeholder="e.g. WH-MAIN")
+            wh_address = st.text_area(
+                "Address", placeholder="Optional street address")
             submitted = st.form_submit_button("Save Warehouse")
 
         if submitted:
@@ -51,14 +53,18 @@ def render_settings_page() -> None:
             warehouse_options = {wh["name"]: wh["id"] for wh in warehouses}
 
             with st.form("location_form", clear_on_submit=True):
-                loc_name = st.text_input("Location Name *", placeholder="e.g. Rack A")
-                loc_code = st.text_input("Location Code *", placeholder="e.g. LOC-RACK-A")
-                loc_warehouse = st.selectbox("Warehouse *", options=list(warehouse_options.keys()))
+                loc_name = st.text_input(
+                    "Location Name *", placeholder="e.g. Rack A")
+                loc_code = st.text_input(
+                    "Location Code *", placeholder="e.g. LOC-RACK-A")
+                loc_warehouse = st.selectbox(
+                    "Warehouse *", options=list(warehouse_options.keys()))
                 submitted_loc = st.form_submit_button("Save Location")
 
             if submitted_loc:
                 selected_warehouse_id = warehouse_options[loc_warehouse]
-                ok, message = create_location(loc_name, loc_code, selected_warehouse_id)
+                ok, message = create_location(
+                    loc_name, loc_code, selected_warehouse_id)
                 if ok:
                     st.success(message)
                     st.rerun()

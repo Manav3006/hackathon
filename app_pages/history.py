@@ -8,13 +8,13 @@ from db import DOCUMENT_TYPES, list_ledger, list_warehouses
 
 def render_history_page() -> None:
     st.header("Move History")
-    st.write("Every stock movement is recorded here. Use the filters to narrow down the results.")
 
     # ── Filters ───────────────────────────────────────────────────────────────
     filter_left, filter_right = st.columns(2)
 
     with filter_left:
-        search_sku = st.text_input("Search by SKU or Product Name", placeholder="e.g. SKU-001")
+        search_sku = st.text_input(
+            "Search by SKU or Product Name", placeholder="e.g. SKU-001")
         operation_choice = st.selectbox(
             "Operation Type",
             options=["All"] + list(DOCUMENT_TYPES),
@@ -24,7 +24,8 @@ def render_history_page() -> None:
         warehouses = list_warehouses()
         warehouse_options = {"All Warehouses": None}
         warehouse_options.update({wh["name"]: wh["id"] for wh in warehouses})
-        warehouse_choice = st.selectbox("Warehouse", options=list(warehouse_options.keys()))
+        warehouse_choice = st.selectbox(
+            "Warehouse", options=list(warehouse_options.keys()))
 
     # Resolve filter values
     doc_type_filter = None if operation_choice == "All" else operation_choice
@@ -38,13 +39,15 @@ def render_history_page() -> None:
     )
 
     if not rows:
-        st.info("No movements found. Try adjusting the filters or perform a stock operation first.")
+        st.info(
+            "No movements found. Try adjusting the filters or perform a stock operation first.")
         return
 
     # ── Build DataFrame ───────────────────────────────────────────────────────
     data = [
         {
-            "Timestamp": row["timestamp"][:19].replace("T", " "),  # strip timezone, readable
+            # strip timezone, readable
+            "Timestamp": row["timestamp"][:19].replace("T", " "),
             "Operation": row["operation"],
             "Reference": row["reference"],
             "SKU": row["sku"],

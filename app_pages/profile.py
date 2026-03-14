@@ -7,10 +7,10 @@ from app_pages.auth import logout_current_user
 
 def render_profile_page() -> None:
     st.header("My Profile")
-    st.write("This page shows the current user and provides logout.")
 
     if not st.session_state.get("is_authenticated"):
-        st.warning("You are not logged in. Please use the Authentication page first.")
+        st.warning(
+            "You are not logged in. Please use the Authentication page first.")
         return
 
     st.text_input(

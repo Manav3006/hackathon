@@ -1,30 +1,35 @@
-# CoreInventory 
+# StockFlow
 
-This repository contains the first project files for Inventory Management System.
+StockFlow is a beginner-friendly Inventory Management System built with Python, Streamlit, and SQLite.
 
-## Current Structure
+## MVP Features
 
-- app.py: Streamlit entry point and sidebar navigation shell
-- db.py: SQLite database path, schema creation, and starter reference data
-- app_pages/: page modules for auth, dashboard, products, operations, history, settings, and profile
-- requirements.txt: Python packages needed to run the app
+- Authentication: signup, login, logout, and local demo OTP reset
+- Product management: create and update products with SKU, category, unit, reorder level, and optional initial stock
+- Unit of measure options: `litres`, `kgs`, `count`
+- Inventory operations:
+	- Receipts increase stock
+	- Deliveries decrease stock
+	- Internal transfers move stock between locations
+	- Adjustments correct stock using counted quantity and reason
+- Move history ledger for all stock-changing actions
+- Dashboard KPI cards and top-products stock chart
+- Settings for warehouses and locations
+- Profile page for current user info and logout
 
-## What Works Right Now
+## Project Structure
 
-- The app starts with Streamlit.
-- The SQLite database file is created automatically on first run.
-- The database schema skeleton is created automatically on startup.
-- Authentication now works (signup, login, local demo OTP reset, logout).
-- Product create/list/search now works from the Products page.
-- Product listing shows total stock and low-stock flag using reorder level.
-- Remaining pages (dashboard/operations/history/settings) are scaffolded and ready to be connected to real CRUD queries.
+- app.py: Streamlit app entry point, global UI theme, navigation, auth gate
+- db.py: SQLite schema, data helpers, auth logic, stock posting engine
+- app_pages/: UI pages (`auth`, `dashboard`, `products`, `operations`, `history`, `settings`, `profile`)
+- requirements.txt: Python dependencies
 
-## How To Run
+## Run Locally
 
 1. Install dependencies:
 
 ```bash
-python -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 2. Start the app:
@@ -33,8 +38,16 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-3. Open the Streamlit preview on port 8501.
+3. Open the app on port `8501`.
 
-## What Comes Next
+## Quick Verification Flow
 
-The next coding step is to connect the Receipts operation to stock_documents, stock_document_lines, stock_balances, and stock_ledger.
+1. Sign up and login.
+2. In Settings, confirm at least one warehouse and two locations.
+3. In Products, create a product using one of the unit options.
+4. Run one receipt, one delivery, one transfer, and one adjustment in Operations.
+5. Verify dashboard KPIs and history ledger update accordingly.
+
+## Demo Smoke Test
+
+Use the full pre-demo checklist in [DEMO_SMOKE_TEST.md](DEMO_SMOKE_TEST.md).

@@ -31,7 +31,6 @@ def _login_user(user: dict) -> None:
 
 def render_auth_page() -> None:
     st.header("Authentication")
-    st.write("Use this page to sign up, log in, and reset passwords with a local demo OTP.")
 
     if st.session_state.get("is_authenticated"):
         st.success(
@@ -41,15 +40,16 @@ def render_auth_page() -> None:
         if st.button("Logout", key="auth_logout_button"):
             logout_current_user()
             st.rerun()
-        st.info("You can also use the sidebar to open dashboard and operations pages.")
         return
 
-    login_tab, signup_tab, reset_tab = st.tabs(["Login", "Signup", "Reset Password"])
+    login_tab, signup_tab, reset_tab = st.tabs(
+        ["Login", "Signup", "Reset Password"])
 
     with login_tab:
         with st.form("login_form"):
             email = st.text_input("Email", key="login_email")
-            password = st.text_input("Password", type="password", key="login_password")
+            password = st.text_input(
+                "Password", type="password", key="login_password")
             login_clicked = st.form_submit_button("Login")
 
         if login_clicked:
@@ -68,8 +68,10 @@ def render_auth_page() -> None:
         with st.form("signup_form"):
             full_name = st.text_input("Full name", key="signup_full_name")
             email = st.text_input("Email", key="signup_email")
-            role = st.selectbox("Role", options=ROLE_OPTIONS, key="signup_role")
-            password = st.text_input("Password", type="password", key="signup_password")
+            role = st.selectbox(
+                "Role", options=ROLE_OPTIONS, key="signup_role")
+            password = st.text_input(
+                "Password", type="password", key="signup_password")
             signup_clicked = st.form_submit_button("Create account")
 
         if signup_clicked:
@@ -81,14 +83,14 @@ def render_auth_page() -> None:
             )
             if success:
                 st.success(message)
-                st.caption("Now switch to the Login tab and sign in.")
             else:
                 st.error(message)
 
     with reset_tab:
         st.subheader("Step 1: Generate OTP")
         with st.form("request_otp_form"):
-            otp_email = st.text_input("Registered email", key="otp_request_email")
+            otp_email = st.text_input(
+                "Registered email", key="otp_request_email")
             otp_request_clicked = st.form_submit_button("Generate Demo OTP")
 
         if otp_request_clicked:
@@ -105,7 +107,6 @@ def render_auth_page() -> None:
 
         latest_otp = st.session_state.get("latest_demo_otp")
         if latest_otp:
-            st.caption("Demo-only OTP display (replace with SMS/email provider later):")
             st.code(
                 f"Email: {st.session_state.get('latest_demo_otp_email')}\n"
                 f"OTP: {latest_otp}"
